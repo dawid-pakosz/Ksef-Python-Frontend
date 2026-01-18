@@ -1,90 +1,120 @@
 import threading
+from tkinter import filedialog, messagebox
 from model import KSeFModel
-from view import KSeFViewV3
+from view import KSeFViewV4
 
 class KSeFController:
     def __init__(self):
         self.model = KSeFModel()
         
-        # Define callbacks for the view
+        # Nested callback structure for organized View
         callbacks = {
-            "menu": self.handle_menu,
-            "send_invoice": self.handle_send_invoice,
-            "edit": self.handle_edit,
-            "delete": self.handle_delete,
-            "change_theme": self.handle_change_theme,
+            "menu": self.handle_view_switch,
+            
+            "session_actions": {
+                "login": self.handle_login,
+                "check_status": self.handle_check_status,
+                "refresh": self.handle_refresh_token,
+                "logout": self.handle_logout
+            },
+            
+            "sales_actions": {
+                "convert": self.handle_convert_excel,
+                "send_xml": self.handle_send_xml,
+                "check_upo": self.handle_check_upo,
+                "preview": self.handle_preview
+            },
+            
+            "purchase_actions": {
+                "sync": self.handle_sync_purchases,
+                "download": self.handle_download_xml,
+                "export": self.handle_export_excel,
+                "preview": self.handle_preview
+            }
         }
         
-        self.view = KSeFViewV3(callbacks, self.model.available_themes)
+        self.view = KSeFViewV4(callbacks, self.model)
         self.refresh_ui()
 
     def run(self):
         self.view.mainloop()
 
     def refresh_ui(self):
-        # Always run UI updates in the main thread
-        self.view.update_state(self.model)
+        self.view.update_ui(self.model)
+        # Przekazywanie logów do konsoli widoku
+        if self.model.logs:
+            self.view.log(self.model.logs[-1])
 
-    def handle_menu(self, key):
-        if key == "dashboard":
-            self.model.last_operation = "Widok dashboardu"
-        elif key == "send":
-            self.model.last_operation = "Otwarto moduł wysyłki"
-        elif key == "receive":
-            def task():
-                self.model.last_operation = "Pobieranie danych z KSeF..."
-                self.refresh_ui()
-                self.model.mock_action("Pobieranie")
-                self.refresh_ui()
-            threading.Thread(target=task).start()
-        elif key == "settings":
-            self.model.last_operation = "Ustawienia systemowe"
-        
+    def handle_view_switch(self, view_name):
+        self.view.show_view(view_name)
+        self.model.log(f"Przełączono widok na: {view_name}")
         self.refresh_ui()
 
-    def handle_send_invoice(self, data):
+    # --- SESSION ACTIONS ---
+    def handle_login(self):
         def task():
-            if not data['nr']:
-                self.model.last_operation = "Błąd: Brak numeru faktury!"
-                self.refresh_ui()
-                return
-
-            self.model.last_operation = "Procesowanie wysyłki..."
+            self.model.open_session()
             self.refresh_ui()
-            
-            # Auto-login if not logged in (for UX)
-            if not self.model.is_logged_in:
-                self.model.login()
-            
-            self.model.send_invoice(data['nr'], data['date'], data['client'])
-            self.refresh_ui()
-            
         threading.Thread(target=task).start()
 
-    def handle_delete(self):
-        # We need to find which row is selected in the Tableview
-        # For simplicity in this mock, we'll try to get selected row index
-        selected_rows = self.view.dashboard.table.view.selection()
-        if not selected_rows:
-            self.model.last_operation = "Wybierz fakturę do usunięcia"
+    def handle_check_status(self):
+        self.model.check_session_status()
+        self.refresh_ui()
+
+    def handle_refresh_token(self):
+        self.model.refresh_session_token()
+        self.refresh_ui()
+
+    def handle_logout(self):
+        self.model.logout()
+        self.refresh_ui()
+
+    # --- SALES ACTIONS ---
+    def handle_convert_excel(self):
+        file_path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")])
+        if file_path:
+            template = self.view.views['sales'].combo_mapping.get()
+            def task():
+                self.model.convert_excel_to_xml(file_path, template)
+                self.refresh_ui()
+                messagebox.showinfo("Sukces", f"Przekonwertowano plik za pomocą {template}")
+            threading.Thread(target=task).start()
+
+    def handle_send_xml(self):
+        file_path = filedialog.askopenfilename(filetypes=[("XML files", "*.xml")])
+        if file_path:
+            def task():
+                self.model.send_xml_invoice(file_path)
+                self.refresh_ui()
+            threading.Thread(target=task).start()
+
+    def handle_check_upo(self):
+        # Simulation: pick the first one from sales for mock
+        if self.model.sales_invoices:
+            inv_nr = self.model.sales_invoices[0][0]
+            self.model.check_status_upo(inv_nr)
+        else:
+            self.model.log("Brak faktur na liście do sprawdzenia statusu.", "WARNING")
+        self.refresh_ui()
+
+    def handle_preview(self):
+        self.model.log("Generowanie wizualizacji HTML...")
+        # In a real app, this would open webbrowser.open("path_to.html")
+        self.refresh_ui()
+
+    # --- PURCHASE ACTIONS ---
+    def handle_sync_purchases(self):
+        def task():
+            self.model.fetch_purchases()
             self.refresh_ui()
-            return
-            
-        # Tableview selection returns IIDs, we need index
-        # This is a bit tricky with Tableview, so we'll just simulate removing the first selected or top one
-        # In a real app, we'd map IID to model index.
-        # For mock:
-        self.model.delete_invoice(0) 
+        threading.Thread(target=task).start()
+
+    def handle_download_xml(self):
+        self.model.log("Pobieranie wybranych plików XML do folderu lokalnego...")
         self.refresh_ui()
 
-    def handle_edit(self):
-        self.model.last_operation = "Tryb edycji (Wybierz fakturę z listy)"
-        self.refresh_ui()
-
-    def handle_change_theme(self, event):
-        new_theme = self.view.dashboard.combo_theme.get()
-        self.view.change_theme(new_theme)
-        self.model.last_operation = f"Zmieniono motyw na: {new_theme}"
+    def handle_export_excel(self):
+        self.model.export_purchases_to_excel()
         self.refresh_ui()
 
 if __name__ == "__main__":

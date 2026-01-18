@@ -1,198 +1,271 @@
 import tkinter as tk
-from tkinter import ttk
-import ttkbootstrap as tb
-from ttkbootstrap.constants import *
-from ttkbootstrap.tableview import Tableview
+from tkinter import filedialog, messagebox
+import customtkinter as ctk
+from PIL import Image
+import os
 
-class Sidebar(tb.Frame):
-    def __init__(self, master, callbacks):
-        super().__init__(master, bootstyle="dark", width=200)
+# Konfiguracja podstawowa
+ctk.set_appearance_mode("System")
+ctk.set_default_color_theme("blue")
+
+# Stylistyka V5.7 Professional
+FONT_UI = ("Segoe UI", 13)
+FONT_BOLD = ("Segoe UI", 13, "bold")
+FONT_TITLE_MAIN = ("Segoe UI", 22, "bold") 
+FONT_DASH_TITLE = ("Segoe UI", 28, "bold")
+FONT_SMALL = ("Segoe UI", 11)
+CORNER_RADIUS = 10
+HEADER_HEIGHT = 85
+SIDEBAR_WIDTH = 285 # Nieco szerszy dla lepszego wyrównania lewego
+SIDEBAR_PADX = 40 # Powiększony odstęp od lewej dla logo i tekstu
+
+class NavButton(ctk.CTkButton):
+    def __init__(self, master, text, icon_text, command, **kwargs):
+        # Używamy ujednoliconego paddingu wewnątrz tekstu dla anchor="w"
+        # CTkButton nie wspiera padx w configure, więc ustawiamy to w init lub przez spacje
+        display_text = f"  {icon_text}   {text}" # Dodatkowe spacje dla "oddechu" od lewej
+        super().__init__(master, text=display_text, command=command, 
+                         corner_radius=0, height=52,
+                         fg_color="transparent", text_color=("gray10", "gray90"),
+                         hover_color=("gray75", "gray25"), anchor="w",
+                         font=FONT_UI, **kwargs)
+
+class Sidebar(ctk.CTkFrame):
+    def __init__(self, master, callbacks, **kwargs):
+        super().__init__(master, corner_radius=0, fg_color=("gray95", "gray5"), **kwargs)
+        
+        # 1. Logo Section
+        self.logo_frame = ctk.CTkFrame(self, height=HEADER_HEIGHT, corner_radius=0, fg_color="transparent")
+        self.logo_frame.pack(fill="x")
+        self.logo_frame.pack_propagate(False)
+
+        # Logo wyrównane do lewej
+        self.logo_label = ctk.CTkLabel(self.logo_frame, text="KSeF App", font=FONT_TITLE_MAIN)
+        self.logo_label.pack(side="left", padx=SIDEBAR_PADX)
+
+        # Separator (Full width)
+        self.sep = ctk.CTkFrame(self, height=1, fg_color=("gray85", "gray20"))
+        self.sep.pack(fill="x")
+
+        # Nawigacja
+        self.btn_dash = NavButton(self, text="Dashboard", icon_text="🏠", command=lambda: callbacks['menu']("session"))
+        self.btn_dash.pack(fill="x", pady=(40, 0))
+
+        self.btn_sales = NavButton(self, text="Wysyłka Faktur", icon_text="📤", command=lambda: callbacks['menu']("sales"))
+        self.btn_sales.pack(fill="x", pady=0)
+
+        self.btn_purchases = NavButton(self, text="Odbiór Faktur", icon_text="📥", command=lambda: callbacks['menu']("purchases"))
+        self.btn_purchases.pack(fill="x", pady=0)
+
+        # 3. Theme Section at Bottom
+        self.theme_btn = NavButton(self, text="Przełącz Motyw", icon_text="🌓", command=self.toggle_theme)
+        self.theme_btn.pack(side="bottom", fill="x", pady=20)
+
+    def toggle_theme(self):
+        current = ctk.get_appearance_mode()
+        new_mode = "Dark" if current == "Light" else "Light"
+        ctk.set_appearance_mode(new_mode)
+
+class TopHeader(ctk.CTkFrame):
+    def __init__(self, master, model, **kwargs):
+        super().__init__(master, height=HEADER_HEIGHT, corner_radius=0, fg_color=("white", "gray10"), border_width=0, **kwargs)
+        self.model = model
         self.pack_propagate(False)
-        self.callbacks = callbacks
+
+        # Lewa strona: Dynamiczny Tytuł
+        self.title_container = ctk.CTkFrame(self, fg_color="transparent")
+        self.title_container.pack(side="left", fill="both", expand=True, padx=40)
         
-        # Logo Section
-        header = tb.Frame(self, bootstyle="dark", padding=20)
-        header.pack(fill=X)
-        tb.Label(header, text="KSeF V3", font=("Helvetica", 18, "bold"), bootstyle="inverse-dark").pack()
-        tb.Label(header, text="Data Entry Edition", font=("Helvetica", 9), bootstyle="inverse-dark").pack()
+        self.lbl_title = ctk.CTkLabel(self.title_container, text=f"Witaj, {model.user_name}!", font=FONT_TITLE_MAIN)
+        self.lbl_title.pack(side="left", expand=False)
 
-        tb.Separator(self, bootstyle="secondary").pack(fill=X, padx=10, pady=15)
-
-        # Action Buttons (Sidebar items)
-        menu_items = [
-            ("📊 Dashboard", "dashboard"),
-            ("📤 Wyślij fakturę", "send"),
-            ("📥 Pobierz dane", "receive"),
-            ("⚙️ Ustawienia", "settings")
-        ]
-
-        for text, key in menu_items:
-            btn = tb.Button(
-                self, 
-                text=text, 
-                bootstyle="link", 
-                command=lambda k=key: callbacks['menu'](k)
-            )
-            btn.pack(fill=X, padx=20, pady=5)
-
-class ActionForm(tb.Frame):
-    def __init__(self, master, callbacks):
-        super().__init__(master, padding=20, relief="solid", borderwidth=1)
-        self.callbacks = callbacks
+        # Prawa strona (Status)
+        self.right_container = ctk.CTkFrame(self, fg_color="transparent")
+        self.right_container.pack(side="right", fill="y", padx=40)
         
-        tb.Label(self, text="Nowa Faktura", font=("Helvetica", 12, "bold")).grid(row=0, column=0, columnspan=2, pady=(0, 20), sticky=W)
+        self.status_frame = ctk.CTkFrame(self.right_container, corner_radius=15, height=32, fg_color="#f8d7da")
+        self.status_frame.pack(side="right", expand=True)
+        self.status_label = ctk.CTkLabel(self.status_frame, text="Brak Sesji", text_color="#721c24", font=FONT_BOLD)
+        self.status_label.pack(padx=18, pady=4)
 
-        # Form Fields
-        tb.Label(self, text="Numer FV:").grid(row=1, column=0, sticky=W, pady=5)
-        self.ent_nr = tb.Entry(self)
-        self.ent_nr.grid(row=1, column=1, sticky=EW, pady=5, padx=(10, 0))
+    def set_title(self, text):
+        self.lbl_title.configure(text=text)
 
-        tb.Label(self, text="Data wyst.:").grid(row=2, column=0, sticky=W, pady=5)
-        self.ent_date = tb.Entry(self)
-        self.ent_date.grid(row=2, column=1, sticky=EW, pady=5, padx=(10, 0))
-
-        tb.Label(self, text="Kontrahent:").grid(row=3, column=0, sticky=W, pady=5)
-        self.ent_client = tb.Entry(self)
-        self.ent_client.grid(row=3, column=1, sticky=EW, pady=5, padx=(10, 0))
-
-        # Action Buttons
-        btn_frame = tb.Frame(self)
-        btn_frame.grid(row=4, column=0, columnspan=2, pady=20, sticky=EW)
-        
-        self.btn_send = tb.Button(btn_frame, text="Wyślij do KSeF", bootstyle="success", command=self.handle_send)
-        self.btn_send.pack(side=LEFT, fill=X, expand=True, padx=(0, 5))
-        
-        self.btn_clear = tb.Button(btn_frame, text="Wyczyść", bootstyle="secondary", command=self.clear_fields)
-        self.btn_clear.pack(side=LEFT, fill=X, expand=True, padx=(5, 0))
-
-        self.columnconfigure(1, weight=1)
-
-    def handle_send(self):
-        data = {
-            "nr": self.ent_nr.get(),
-            "date": self.ent_date.get(),
-            "client": self.ent_client.get()
-        }
-        self.callbacks['send_invoice'](data)
-        self.clear_fields()
-
-    def clear_fields(self):
-        self.ent_nr.delete(0, END)
-        self.ent_date.delete(0, END)
-        self.ent_client.delete(0, END)
-
-class MainDashboard(tb.Frame):
-    def __init__(self, master, callbacks):
-        super().__init__(master, padding=20)
-        self.callbacks = callbacks
-
-        # Top Controls (Edit, Delete, Theme)
-        self.top_controls = tb.Frame(self)
-        self.top_controls.pack(fill=X, pady=(0, 20))
-
-        self.btn_edit = tb.Button(self.top_controls, text="Edytuj", bootstyle="outline-primary", width=10, command=callbacks['edit'])
-        self.btn_edit.pack(side=LEFT, padx=(0, 10))
-
-        self.btn_delete = tb.Button(self.top_controls, text="Usuń", bootstyle="outline-danger", width=10, command=callbacks['delete'])
-        self.btn_delete.pack(side=LEFT)
-
-        # Theme Switcher (from reference)
-        theme_frame = tb.Frame(self.top_controls)
-        theme_frame.pack(side=RIGHT)
-        
-        tb.Label(theme_frame, text="Motyw:").pack(side=LEFT, padx=5)
-        self.combo_theme = tb.Combobox(theme_frame, state="readonly", width=15)
-        self.combo_theme.pack(side=LEFT)
-        self.combo_theme.bind("<<ComboboxSelected>>", self.callbacks['change_theme'])
-
-        # Main Layout (Form + Table)
-        inner_container = tb.Frame(self)
-        inner_container.pack(fill=BOTH, expand=True)
-
-        # Left: Form
-        self.action_form = ActionForm(inner_container, callbacks)
-        self.action_form.pack(side=LEFT, fill=Y, padx=(0, 20))
-
-        # Right: Table
-        self.coldata = [
-            {"text": "Numer", "stretch": True},
-            {"text": "Data", "stretch": False, "width": 120},
-            {"text": "Kontrahent", "stretch": True},
-            {"text": "Status", "stretch": False, "width": 100},
-        ]
-        self.table = Tableview(
-            master=inner_container,
-            coldata=self.coldata,
-            rowdata=[],
-            paginated=True,
-            searchable=True,
-            bootstyle="info",
-            height=15
-        )
-        self.table.pack(side=LEFT, fill=BOTH, expand=True)
-
-    def set_table_data(self, data):
-        self.table.build_table_data(coldata=self.coldata, rowdata=data)
-
-class KSeFViewV3(tb.Window):
-    def __init__(self, callbacks, themes):
-        super().__init__(
-            title="KSeF Client V3 - Professional Data Entry",
-            themename="darkly",
-            size=(1200, 750),
-            resizable=(True, True)
-        )
-        self.callbacks = callbacks
-        self.themes = themes
-        self.setup_ui()
-
-    def setup_ui(self):
-        # Sidebar
-        self.sidebar = Sidebar(self, self.callbacks)
-        self.sidebar.pack(side=LEFT, fill=Y)
-
-        # Main Workspace Container
-        self.workspace = tb.Frame(self)
-        self.workspace.pack(side=RIGHT, fill=BOTH, expand=True)
-
-        # Top Bar (Status)
-        self.top_bar = tb.Frame(self.workspace, padding=10)
-        self.top_bar.pack(fill=X)
-        
-        self.lbl_status = tb.Label(self.top_bar, text="🔴 Sesja nieaktywna", bootstyle="danger", font=("Helvetica", 10, "bold"))
-        self.lbl_status.pack(side=RIGHT, padx=20)
-        
-        self.lbl_info = tb.Label(self.top_bar, text="Ready", font=("Helvetica", 10, "italic"), bootstyle="secondary")
-        self.lbl_info.pack(side=LEFT, padx=20)
-
-        tb.Separator(self.workspace, bootstyle="secondary").pack(fill=X)
-
-        # Dashboard View
-        self.dashboard = MainDashboard(self.workspace, self.callbacks)
-        self.dashboard.pack(fill=BOTH, expand=True)
-        
-        # Populate themes
-        self.dashboard.combo_theme.configure(values=self.themes)
-        self.dashboard.combo_theme.set(self.style.theme.name)
-
-        # Footer / Log
-        self.footer = tb.Frame(self.workspace, bootstyle="secondary", padding=5)
-        self.footer.pack(fill=X, side=BOTTOM)
-        self.lbl_log = tb.Label(self.footer, text="Czekam na akcję...", bootstyle="inverse-secondary", font=("Consolas", 8))
-        self.lbl_log.pack(side=LEFT, padx=10)
-
-    def update_state(self, model):
-        # Update Status Bar
-        if model.is_logged_in:
-            self.lbl_status.configure(text="🟢 Zalogowano", bootstyle="success")
+    def update_status(self, is_logged_in):
+        if is_logged_in:
+            self.status_frame.configure(fg_color="#d4edda")
+            self.status_label.configure(text="Sesja Aktywna", text_color="#155724")
         else:
-            self.lbl_status.configure(text="🔴 Sesja nieaktywna", bootstyle="danger")
-        
-        self.lbl_info.configure(text=model.last_operation)
-        self.lbl_log.configure(text=f"Log: {model.last_operation}")
-        
-        # Update Table
-        self.dashboard.set_table_data(model.invoices)
+            self.status_frame.configure(fg_color="#f8d7da")
+            self.status_label.configure(text="Brak Sesji", text_color="#721c24")
 
-    def change_theme(self, theme_name):
-        self.style.theme_use(theme_name)
+class DashboardView(ctk.CTkFrame):
+    def __init__(self, master, model, callbacks, **kwargs):
+        super().__init__(master, fg_color="transparent", **kwargs)
+        self.model = model
+        
+        self.center_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.center_frame.place(relx=0.5, rely=0.4, anchor="center")
+
+        self.title = ctk.CTkLabel(self.center_frame, text="KSeF Desktop Client", font=FONT_DASH_TITLE)
+        self.title.pack(pady=10)
+
+        self.desc = ctk.CTkLabel(self.center_frame, text="Profesjonalne narzędzie do obsługi faktur.\nWitaj ponownie! Kliknij poniżej, aby otworzyć bezpieczną sesję z KSeF.", font=FONT_UI, text_color="gray")
+        self.desc.pack(pady=(0, 40))
+
+        self.btn_login = ctk.CTkButton(self.center_frame, text="Otwórz Sesję KSeF", font=FONT_BOLD, 
+                                        height=55, width=320, corner_radius=12, command=callbacks['login'],
+                                        fg_color="#0066cc", hover_color="#0052a3")
+        self.btn_login.pack()
+
+class SalesView(ctk.CTkFrame):
+    def __init__(self, master, callbacks, mapping_templates, **kwargs):
+        super().__init__(master, fg_color="transparent", **kwargs)
+        
+        BTN_COLOR = "#2c3e50"
+        BTN_HOVER = "#34495e"
+
+        # 1. Toolbar
+        self.toolbar = ctk.CTkFrame(self, height=60, fg_color="transparent")
+        self.toolbar.pack(fill="x", padx=25, pady=(20, 15))
+
+        self.btn_convert = ctk.CTkButton(self.toolbar, text="Excel -> XML", command=callbacks['convert'], corner_radius=8, fg_color=BTN_COLOR, hover_color=BTN_HOVER)
+        self.btn_convert.pack(side="left", padx=5)
+
+        self.btn_send = ctk.CTkButton(self.toolbar, text="Wyślij XML", command=callbacks['send_xml'], corner_radius=8, fg_color=BTN_COLOR, hover_color=BTN_HOVER)
+        self.btn_send.pack(side="left", padx=5)
+
+        self.btn_upo = ctk.CTkButton(self.toolbar, text="Odbierz UPO", command=callbacks['check_upo'], corner_radius=8, fg_color=BTN_COLOR, hover_color=BTN_HOVER)
+        self.btn_upo.pack(side="left", padx=5)
+
+        self.btn_viz = ctk.CTkButton(self.toolbar, text="Wizualizacja", command=callbacks['preview'], corner_radius=8, fg_color=BTN_COLOR, hover_color=BTN_HOVER)
+        self.btn_viz.pack(side="left", padx=5)
+
+        self.combo_mapping = ctk.CTkOptionMenu(self.toolbar, values=mapping_templates, width=200, corner_radius=8)
+        self.combo_mapping.pack(side="right", padx=5)
+
+        # 2. Filter Bar
+        self.filter_frame = ctk.CTkFrame(self, height=45, fg_color="transparent")
+        self.filter_frame.pack(fill="x", padx=30, pady=(5, 5))
+        
+        self.filter_entry = ctk.CTkEntry(self.filter_frame, placeholder_text=" 🔍 Filtruj dokumenty...", width=350, corner_radius=8, font=FONT_UI)
+        self.filter_entry.pack(side="left")
+
+        # 3. Scrollable Table Container
+        self.table_container = ctk.CTkScrollableFrame(self, corner_radius=10, border_width=1, border_color=("gray85", "gray20"))
+        self.table_container.pack(fill="both", expand=True, padx=30, pady=10)
+        
+        self.table_label = ctk.CTkLabel(self.table_container, text="[ Tu pojawi się tabela z fakturami sprzedaży ]", font=FONT_UI, text_color="gray")
+        self.table_label.pack(expand=True, pady=100)
+
+class PurchasesView(ctk.CTkFrame):
+    def __init__(self, master, callbacks, **kwargs):
+        super().__init__(master, fg_color="transparent", **kwargs)
+        
+        BTN_COLOR = "#2c3e50"
+        BTN_HOVER = "#34495e"
+
+        # 1. Toolbar
+        self.toolbar = ctk.CTkFrame(self, height=60, fg_color="transparent")
+        self.toolbar.pack(fill="x", padx=25, pady=(20, 15))
+
+        self.btn_sync = ctk.CTkButton(self.toolbar, text="Synchronizuj z KSeF", command=callbacks['sync'], corner_radius=8, fg_color=BTN_COLOR, hover_color=BTN_HOVER)
+        self.btn_sync.pack(side="left", padx=5)
+
+        self.btn_download = ctk.CTkButton(self.toolbar, text="Pobierz XML", command=callbacks['download'], corner_radius=8, fg_color=BTN_COLOR, hover_color=BTN_HOVER)
+        self.btn_download.pack(side="left", padx=5)
+
+        self.btn_export = ctk.CTkButton(self.toolbar, text="Eksportuj do Excel", command=callbacks['export'], corner_radius=8, fg_color=BTN_COLOR, hover_color=BTN_HOVER)
+        self.btn_export.pack(side="left", padx=5)
+
+        self.btn_przyklad = ctk.CTkButton(self.toolbar, text="btn_przyklad", command=callbacks['export'], corner_radius=8, fg_color=BTN_COLOR, hover_color=BTN_HOVER)
+        self.btn_przyklad.pack(side="left", padx=5)
+
+        # 2. Filter Bar
+        self.filter_frame = ctk.CTkFrame(self, height=45, fg_color="transparent")
+        self.filter_frame.pack(fill="x", padx=30, pady=(5, 5))
+        
+        self.filter_entry = ctk.CTkEntry(self.filter_frame, placeholder_text=" 🔍 Filtruj dokumenty zakupowe...", width=350, corner_radius=8, font=FONT_UI)
+        self.filter_entry.pack(side="left")
+
+        # 3. Scrollable Table Container
+        self.table_container = ctk.CTkScrollableFrame(self, corner_radius=10, border_width=1, border_color=("gray85", "gray20"))
+        self.table_container.pack(fill="both", expand=True, padx=30, pady=10)
+        
+        self.table_label = ctk.CTkLabel(self.table_container, text="[ Tu pojawi się tabela z pobranymi fakturami ]", font=FONT_UI, text_color="gray")
+        self.table_label.pack(expand=True, pady=100)
+
+class KSeFViewV4(ctk.CTk):
+    def __init__(self, callbacks, model):
+        super().__init__()
+
+        self.callbacks = callbacks
+        self.model = model
+
+        self.title("KSeF Desktop Client Professional")
+        self.geometry("1400x950")
+        self.minsize(1050, 800)
+
+        self.grid_columnconfigure(0, weight=0)
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=0)
+        self.grid_rowconfigure(1, weight=1)
+
+        # 1. Sidebar
+        self.sidebar = Sidebar(self, callbacks, width=SIDEBAR_WIDTH)
+        self.sidebar.grid(row=0, column=0, rowspan=2, sticky="nsew")
+
+        # 2. Top Header
+        self.header = TopHeader(self, model)
+        self.header.grid(row=0, column=1, sticky="ew")
+
+        # 3. Main Workspace Area
+        self.workspace_area = ctk.CTkFrame(self, corner_radius=0, fg_color="transparent")
+        self.workspace_area.grid(row=1, column=1, sticky="nsew")
+        
+        self.views = {
+            "session": DashboardView(self.workspace_area, model, callbacks['session_actions']),
+            "sales": SalesView(self.workspace_area, callbacks['sales_actions'], model.mapping_templates),
+            "purchases": PurchasesView(self.workspace_area, callbacks['purchase_actions'])
+        }
+
+        # 4. Action Log Console
+        self.console_container = ctk.CTkFrame(self.workspace_area, height=180, corner_radius=12, 
+                                             fg_color=("white", "gray12"), border_width=1, border_color=("gray85", "gray20"))
+        self.console_container.pack(side="bottom", fill="x", padx=30, pady=(0, 30))
+        self.console_container.pack_propagate(False)
+
+        self.console_label = ctk.CTkLabel(self.console_container, text="Dziennik Zdarzeń Systemowych", font=FONT_SMALL, text_color="gray50")
+        self.console_label.pack(anchor="w", padx=15, pady=(8, 0))
+
+        self.txt_console = ctk.CTkTextbox(self.console_container, fg_color="transparent", font=("Consolas", 11), 
+                                         text_color=("gray30", "gray70"), corner_radius=10)
+        self.txt_console.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        self.txt_console.insert("0.0", "System KSeF gotowy. Oczekiwanie na akcję...\n")
+        self.txt_console.configure(state="disabled")
+
+        self.show_view("session")
+
+    def show_view(self, name):
+        if name == "session":
+            self.header.set_title(f"Witaj, {self.model.user_name}!")
+        elif name == "sales":
+            self.header.set_title("Moduł: Wysyłka i Sprzedaż Faktur")
+        elif name == "purchases":
+            self.header.set_title("Moduł: Odbiór i Zakupy Faktur")
+
+        for view in self.views.values():
+            view.pack_forget()
+        if name in self.views:
+            self.console_container.pack_forget()
+            self.views[name].pack(fill="both", expand=True)
+            self.console_container.pack(side="bottom", fill="x", padx=30, pady=(0, 30))
+
+    def log(self, message):
+        self.txt_console.configure(state="normal")
+        self.txt_console.insert("end", f"> {message}\n")
+        self.txt_console.see("end")
+        self.txt_console.configure(state="disabled")
+
+    def update_ui(self, model):
+        self.header.update_status(model.is_logged_in)

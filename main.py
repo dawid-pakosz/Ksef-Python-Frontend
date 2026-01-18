@@ -1,13 +1,13 @@
 from controller import KSeFController
 
 """
-KSeF Desktop Client V3 - Reference Based
+KSeF Desktop Client V4 - MVC Enterprise
 ---------------------------------------
 Author: Antigravity AI
-Version: 3.0 (Data Entry Edition)
+Version: 4.0 (Backend Ready)
 
-This version focuses on a structured grid layout and interactive 
-forms combined with the professional enterprise sidebar.
+This version is optimized for backend integration with specialized 
+views for Session, Sales and Purchases.
 """
 
 if __name__ == "__main__":
